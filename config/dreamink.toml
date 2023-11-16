@@ -1,0 +1,18 @@
+[api]
+# The environment variable containing your OpenAI API key
+api_key_env = "OPENAI_API_KEY"
+
+[models]
+expansion_model = "gpt-4-0613"
+expansion_temperature = 0.9
+max_retries = 2
+
+[images]
+size = "1792x1024"
+quality = "hd"
+cost_per_image_usd = 0.080
+
+[journal]
+output_path = "journal"
+database_path = "data/dreamink.json"
+default_style = "watercolor"

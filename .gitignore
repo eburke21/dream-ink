@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Journal output (images are large, generated on demand)
+journal/**/images/
+journal/**/thumbs/
+data/dreamink.json
+
+# Poetry
+poetry.lock
+
+# OS
+.DS_Store
+
+dev-docs/
