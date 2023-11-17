@@ -122,6 +122,7 @@ def _run_add_without_image(raw_notes, entry_date, config):
     from dreamink.journal import append_to_journal
     from dreamink.models import DreamEntry
     from dreamink.storage import add_entry, load_database, save_database
+    from dreamink.tagger import extract_tags
     from dreamink.utils import get_openai_client
 
     client = get_openai_client(config)
@@ -129,6 +130,9 @@ def _run_add_without_image(raw_notes, entry_date, config):
     click.echo(_styled("Expanding dream scene...", "cyan"))
     scene = expand_dream_notes(raw_notes, client=client, config=config)
     expansion_cost = calculate_llm_cost(scene.token_usage)
+
+    click.echo(_styled("Extracting tags...", "cyan"))
+    tags, tag_usage = extract_tags(scene.description, client=client, config=config)
 
     db = load_database(config.database_path)
     existing = [e for e in db.entries if e.date == entry_date]
@@ -141,8 +145,9 @@ def _run_add_without_image(raw_notes, entry_date, config):
         created_at=datetime.now(timezone.utc).isoformat(),
         raw_notes=raw_notes,
         scene_description=scene.description,
+        tags=tags,
         mood=scene.mood,
-        token_usage={"expansion": scene.token_usage},
+        token_usage={"expansion": scene.token_usage, "tagging": tag_usage},
     )
 
     db = add_entry(db, entry)
@@ -338,3 +343,398 @@ def generate(entry_date: str | None, gen_all: bool, style_name: str | None):
     except Exception as e:
         _error(f"Generation failed: {e}")
         sys.exit(1)
+
+
+@cli.command()
+@click.option(
+    "--date", "entry_date",
+    required=True,
+    help="Date of the entry to compare (YYYY-MM-DD).",
+)
+@click.option(
+    "--styles", "style_list",
+    default=None,
+    help="Comma-separated list of styles (default: all 5).",
+)
+def compare(entry_date: str, style_list: str | None):
+    """Generate the same dream in multiple styles for comparison.
+
+    Examples:
+
+        dreamink compare --date 2023-11-15
+
+        dreamink compare --date 2023-11-15 --styles watercolor,manga,film_still
+    """
+    try:
+        from dreamink.illustrator import generate_illustration
+        from dreamink.journal import rebuild_journal
+        from dreamink.models import Illustration
+        from dreamink.postprocess import download_and_save
+        from dreamink.storage import load_database, save_database
+        from dreamink.utils import get_openai_client
+
+        config = get_config()
+        all_styles = get_styles()
+        client = get_openai_client(config)
+        db = load_database(config.database_path)
+
+        entries = [e for e in db.entries if e.date == entry_date]
+        if not entries:
+            _error(f"No entries found for date {entry_date}.")
+            sys.exit(1)
+        entry = entries[0]
+
+        if not entry.scene_description:
+            _error(f"Entry {entry.id} has no scene description.")
+            sys.exit(1)
+
+        # Determine which styles to generate
+        if style_list:
+            requested = [s.strip() for s in style_list.split(",")]
+            for s in requested:
+                if s not in all_styles:
+                    _error(f"Unknown style '{s}'. Available: {', '.join(all_styles.keys())}")
+                    sys.exit(1)
+        else:
+            requested = list(all_styles.keys())
+
+        existing_styles = {i.style for i in entry.illustrations}
+        to_generate = [s for s in requested if s not in existing_styles]
+
+        if not to_generate:
+            _success(f"Entry {entry.id} already has all requested styles.")
+            return
+
+        click.echo(f"Comparing {len(to_generate)} styles for entry {entry.id}:")
+        total_cost = 0.0
+
+        for style_name in to_generate:
+            style = all_styles[style_name]
+            click.echo(_styled(f"  Generating {style.label}...", "cyan"))
+
+            result = generate_illustration(
+                entry.scene_description, style, client=client, config=config
+            )
+
+            if result.rejected:
+                _warn(f"  Content policy rejection for {style.label}: {result.rejection_reason}")
+                continue
+
+            processed = download_and_save(
+                image_url=result.url,
+                entry_date=entry.date,
+                style=style_name,
+                output_root=config.output_path,
+                raw_notes=entry.raw_notes,
+            )
+
+            entry.illustrations.append(
+                Illustration(
+                    style=style_name,
+                    image_path=processed.image_path,
+                    thumb_path=processed.thumb_path,
+                    revised_prompt=result.revised_prompt,
+                    generated_at=datetime.now(timezone.utc).isoformat(),
+                    cost_usd=config.cost_per_image_usd,
+                )
+            )
+            total_cost += config.cost_per_image_usd
+            _success(f"  Saved: {processed.image_path}")
+
+        save_database(db, config.database_path)
+
+        # Generate comparison Markdown
+        _write_comparison_md(entry, config.output_path, all_styles)
+
+        # Rebuild main journal
+        journal_path = f"{config.output_path}/dream_journal.md"
+        rebuild_journal(db, journal_path)
+
+        click.echo()
+        _success(f"Comparison complete. Total cost: ${total_cost:.2f}")
+
+    except RuntimeError as e:
+        if "Missing API key" in str(e):
+            _error(f"Authentication failed -- check your OPENAI_API_KEY environment variable.\n  {e}")
+        else:
+            _error(str(e))
+        sys.exit(1)
+    except Exception as e:
+        _error(f"Compare failed: {e}")
+        sys.exit(1)
+
+
+def _write_comparison_md(entry, output_root: str, styles: dict):
+    """Write a comparison Markdown file with all illustrations for an entry."""
+    from pathlib import Path
+
+    year_month = entry.date[:7]
+    comp_dir = Path(output_root) / year_month / "comparisons"
+    comp_dir.mkdir(parents=True, exist_ok=True)
+    comp_path = comp_dir / f"{entry.date}_comparison.md"
+
+    dt = datetime.strptime(entry.date, "%Y-%m-%d")
+    lines = [
+        f"# Style Comparison: {dt.strftime('%B %d, %Y')}",
+        "",
+        f"**Raw notes:** {entry.raw_notes}",
+        "",
+        f"**Scene:** {entry.scene_description}",
+        "",
+        "---",
+        "",
+    ]
+
+    for illust in entry.illustrations:
+        label = styles.get(illust.style, type("", (), {"label": illust.style})).label
+        lines.append(f"### {label}")
+        lines.append("")
+        lines.append(f"![{illust.style}]({illust.image_path})")
+        lines.append("")
+
+    comp_path.write_text("\n".join(lines))
+
+
+@cli.command()
+@click.option("--since", default=None, help="Show tags from entries after this date (YYYY-MM-DD).")
+@click.option("--top", default=None, type=int, help="Show only the N most common tags.")
+@click.option("--stats", is_flag=True, default=False, help="Show cost statistics alongside tags.")
+def tags(since: str | None, top: int | None, stats: bool):
+    """Show tag frequency and co-occurrence across all entries.
+
+    Examples:
+
+        dreamink tags
+
+        dreamink tags --since 2023-11-01 --top 10
+
+        dreamink tags --stats
+    """
+    from dreamink.storage import load_database
+    from dreamink.utils import calculate_llm_cost as calc_cost
+    from dreamink.models import TokenUsage
+
+    config = get_config()
+    db = load_database(config.database_path)
+
+    entries = db.entries
+    if since:
+        try:
+            since_dt = datetime.strptime(since, "%Y-%m-%d")
+        except ValueError:
+            _error(f"Invalid date format: '{since}'. Use YYYY-MM-DD.")
+            sys.exit(1)
+        entries = [e for e in entries if datetime.strptime(e.date, "%Y-%m-%d") >= since_dt]
+
+    if not entries:
+        _warn("No entries found.")
+        return
+
+    # Tag frequency
+    tag_counts: dict[str, int] = {}
+    for entry in entries:
+        for tag in entry.tags:
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+    if not tag_counts:
+        _warn("No tags found on any entries.")
+        return
+
+    sorted_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)
+    if top:
+        sorted_tags = sorted_tags[:top]
+
+    max_count = sorted_tags[0][1] if sorted_tags else 1
+    max_name_len = max(len(t[0]) for t in sorted_tags)
+
+    click.echo(_styled("Tag Frequency", "bright_white"))
+    click.echo()
+    for tag, count in sorted_tags:
+        bar_len = int((count / max_count) * 20)
+        bar = "\u2588" * bar_len
+        click.echo(f"  {tag:<{max_name_len}}  {bar} {count}")
+
+    # Co-occurrence
+    click.echo()
+    click.echo(_styled("Co-occurrence (tags appearing together)", "bright_white"))
+    click.echo()
+
+    pair_counts: dict[tuple[str, str], int] = {}
+    for entry in entries:
+        tags_sorted = sorted(entry.tags)
+        for i in range(len(tags_sorted)):
+            for j in range(i + 1, len(tags_sorted)):
+                pair = (tags_sorted[i], tags_sorted[j])
+                pair_counts[pair] = pair_counts.get(pair, 0) + 1
+
+    sorted_pairs = sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)
+    shown = 0
+    for (t1, t2), count in sorted_pairs:
+        if count < 2:
+            break
+        click.echo(f"  {t1} + {t2}: {count}")
+        shown += 1
+        if shown >= 10:
+            break
+
+    if shown == 0:
+        click.echo("  (no co-occurring pairs yet)")
+
+    # Cost stats
+    if stats:
+        _print_cost_stats(entries, config)
+
+
+def _print_cost_stats(entries, config):
+    """Print cost statistics for a set of entries."""
+    from dreamink.models import TokenUsage
+    from dreamink.utils import calculate_llm_cost as calc_cost
+
+    click.echo()
+    click.echo(_styled("Cost Statistics", "bright_white"))
+    click.echo()
+
+    total_expansion_cost = 0.0
+    total_tagging_cost = 0.0
+    total_image_cost = 0.0
+
+    for entry in entries:
+        if "expansion" in entry.token_usage:
+            total_expansion_cost += calc_cost(entry.token_usage["expansion"])
+        if "tagging" in entry.token_usage:
+            total_tagging_cost += calc_cost(entry.token_usage["tagging"])
+        for illust in entry.illustrations:
+            total_image_cost += illust.cost_usd
+
+    total_cost = total_expansion_cost + total_tagging_cost + total_image_cost
+    avg_cost = total_cost / len(entries) if entries else 0
+
+    click.echo(f"  Total entries: {len(entries)}")
+    click.echo(f"  Total cost: ${total_cost:.2f}")
+    click.echo(f"  Average cost/entry: ${avg_cost:.3f}")
+    click.echo(f"  Breakdown:")
+    click.echo(f"    Expansion: ${total_expansion_cost:.3f}")
+    click.echo(f"    Tagging:   ${total_tagging_cost:.3f}")
+    click.echo(f"    Images:    ${total_image_cost:.2f}")
+
+    # Projected monthly cost
+    if len(entries) >= 2:
+        first_date = datetime.strptime(min(e.date for e in entries), "%Y-%m-%d")
+        last_date = datetime.strptime(max(e.date for e in entries), "%Y-%m-%d")
+        days_span = (last_date - first_date).days or 1
+        entries_per_month = len(entries) / days_span * 30
+        projected = avg_cost * entries_per_month
+        click.echo(f"  Projected monthly ({entries_per_month:.0f} entries): ${projected:.2f}")
+
+
+@cli.command("journal")
+def journal_cmd():
+    """Rebuild journal index and monthly index pages.
+
+    Regenerates the main journal file, monthly index pages with
+    thumbnail tables and tag frequency charts, and a root index
+    linking to each month.
+
+    Examples:
+
+        dreamink journal
+    """
+    from dreamink.journal import rebuild_journal
+    from dreamink.storage import load_database
+
+    config = get_config()
+    db = load_database(config.database_path)
+
+    if not db.entries:
+        _warn("No entries in the database.")
+        return
+
+    # Rebuild main journal
+    journal_path = f"{config.output_path}/dream_journal.md"
+    rebuild_journal(db, journal_path)
+    _success(f"Rebuilt {journal_path}")
+
+    # Build monthly indexes
+    _build_monthly_indexes(db, config)
+
+    _success("Journal rebuild complete.")
+
+
+def _build_monthly_indexes(db, config):
+    """Generate monthly index pages and root index."""
+    from collections import defaultdict
+    from pathlib import Path
+
+    from dreamink.utils import calculate_llm_cost as calc_cost
+
+    styles = get_styles()
+
+    # Group entries by month
+    months: dict[str, list] = defaultdict(list)
+    for entry in db.entries:
+        ym = entry.date[:7]
+        months[ym].append(entry)
+
+    root_index_lines = ["# Dream Journal Index", ""]
+
+    for ym in sorted(months.keys(), reverse=True):
+        entries = sorted(months[ym], key=lambda e: e.date)
+        dt = datetime.strptime(ym + "-01", "%Y-%m-%d")
+        month_label = dt.strftime("%B %Y")
+
+        root_index_lines.append(f"- [{month_label}]({ym}/index.md) ({len(entries)} entries)")
+
+        # Build monthly index
+        lines = [f"# {month_label} Dreams", ""]
+        lines.append("| Date | Tags | Style | Thumbnail |")
+        lines.append("|------|------|-------|-----------|")
+
+        for entry in entries:
+            entry_dt = datetime.strptime(entry.date, "%Y-%m-%d")
+            date_short = entry_dt.strftime("%b %d")
+            tags_str = ", ".join(entry.tags) if entry.tags else ""
+            if entry.illustrations:
+                illust = entry.illustrations[0]
+                style_label = styles.get(illust.style, type("", (), {"label": illust.style})).label
+                thumb = f"![thumb]({illust.thumb_path})" if illust.thumb_path else ""
+            else:
+                style_label = ""
+                thumb = ""
+            lines.append(f"| {date_short} | {tags_str} | {style_label} | {thumb} |")
+
+        lines.append("")
+
+        # Tag frequency for this month
+        tag_counts: dict[str, int] = {}
+        for entry in entries:
+            for tag in entry.tags:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+        if tag_counts:
+            lines.append(f"### Tag Frequency ({month_label})")
+            lines.append("")
+            max_count = max(tag_counts.values())
+            for tag, count in sorted(tag_counts.items(), key=lambda x: x[1], reverse=True):
+                bar = "\u2588" * int((count / max_count) * 10)
+                lines.append(f"{tag}: {bar} {count}")
+            lines.append("")
+
+        # Monthly cost
+        total_cost = 0.0
+        for entry in entries:
+            for usage in entry.token_usage.values():
+                total_cost += calc_cost(usage)
+            for illust in entry.illustrations:
+                total_cost += illust.cost_usd
+
+        lines.append(f"**Entries:** {len(entries)} | **Total cost:** ${total_cost:.2f}")
+        lines.append("")
+
+        month_dir = Path(config.output_path) / ym
+        month_dir.mkdir(parents=True, exist_ok=True)
+        (month_dir / "index.md").write_text("\n".join(lines))
+        click.echo(f"  Built {ym}/index.md ({len(entries)} entries)")
+
+    root_index_lines.append("")
+    root_path = Path(config.output_path) / "index.md"
+    root_path.write_text("\n".join(root_index_lines))

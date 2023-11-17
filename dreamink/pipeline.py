@@ -14,6 +14,7 @@ from dreamink.illustrator import generate_illustration
 from dreamink.models import DreamEntry, Illustration, TokenUsage
 from dreamink.postprocess import download_and_save
 from dreamink.storage import add_entry, load_database, save_database
+from dreamink.tagger import extract_tags
 from dreamink.utils import calculate_llm_cost, get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,11 @@ def process_dream(
 
     expansion_cost = calculate_llm_cost(scene.token_usage)
 
+    # Stage 1b: Tag extraction
+    logger.info("Stage 1b: Extracting tags...")
+    tags, tag_usage = extract_tags(scene.description, client=client, config=config)
+    logger.info("Tags extracted: %s", tags)
+
     # Stage 2: Image generation
     illustrations = []
     logger.info("Stage 2: Generating illustration (style: %s)...", style.label)
@@ -112,10 +118,10 @@ def process_dream(
         created_at=now,
         raw_notes=raw_notes,
         scene_description=scene.description,
-        tags=[],  # Tags added in Phase 4
+        tags=tags,
         mood=scene.mood,
         illustrations=illustrations,
-        token_usage={"expansion": scene.token_usage},
+        token_usage={"expansion": scene.token_usage, "tagging": tag_usage},
     )
 
     # Persist
