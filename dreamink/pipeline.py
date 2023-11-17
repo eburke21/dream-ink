@@ -58,6 +58,15 @@ def process_dream(
 
     now = datetime.now(timezone.utc).isoformat()
 
+    # Truncate very long notes
+    _MAX_NOTES_WORDS = 500
+    words = raw_notes.split()
+    if len(words) > _MAX_NOTES_WORDS:
+        raw_notes = " ".join(words[:_MAX_NOTES_WORDS])
+        logger.warning(
+            "Input truncated from %d to %d words", len(words), _MAX_NOTES_WORDS
+        )
+
     # Stage 1: Scene expansion
     logger.info("Stage 1: Expanding dream notes...")
     t0 = time.time()

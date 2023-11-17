@@ -98,7 +98,11 @@ class TestExpandDreamNotes:
             metadata_resp,
         ]
 
-        expand_dream_notes("test", client=mock_client, config=mock_config)
+        # Use 10+ words so the short-input temperature override doesn't trigger
+        expand_dream_notes(
+            "underwater kitchen dream with fish swimming through cabinets and stained glass",
+            client=mock_client, config=mock_config,
+        )
 
         call_args = mock_client.chat.completions.create.call_args_list[0]
         assert call_args.kwargs["model"] == "gpt-4-0613"
@@ -162,3 +166,18 @@ class TestExpandDreamNotes:
             )
             assert isinstance(result, SceneExpansion)
             assert len(result.description) > 0
+
+    def test_short_input_lowers_temperature(self, mock_config):
+        """Input with < 10 words should use temperature 0.7."""
+        expansion_resp = _make_chat_response("A scene.")
+        metadata_resp = _make_chat_response('{"dominant_colors": [], "mood": ""}')
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = [
+            expansion_resp,
+            metadata_resp,
+        ]
+
+        expand_dream_notes("flying", client=mock_client, config=mock_config)
+
+        call_args = mock_client.chat.completions.create.call_args_list[0]
+        assert call_args.kwargs["temperature"] == 0.7

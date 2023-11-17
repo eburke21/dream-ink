@@ -16,23 +16,54 @@ logger = logging.getLogger(__name__)
 # DALL-E 3 prompt limit
 _MAX_PROMPT_LENGTH = 4000
 
+_SANITIZE_PROMPT = """Rewrite this dream scene description to remove any potentially
+objectionable elements (violence, gore, nudity, distressing imagery) while preserving
+the dream's structure, atmosphere, and surreal logic. Keep the same length (3-4 sentences)
+and visual detail level. Return ONLY the rewritten description, no explanation."""
+
+
+def sanitize_scene(
+    scene_description: str,
+    client: OpenAI,
+    config: AppConfig,
+) -> str:
+    """Ask GPT-4 to rewrite a scene removing content-policy-triggering elements."""
+    response = retry_api_call(
+        lambda: client.chat.completions.create(
+            model=config.expansion_model,
+            temperature=0.5,
+            messages=[
+                {"role": "system", "content": _SANITIZE_PROMPT},
+                {"role": "user", "content": scene_description},
+            ],
+        ),
+        max_retries=config.max_retries,
+    )
+    return response.choices[0].message.content.strip()
+
 
 def generate_illustration(
     scene_description: str,
     style: StyleConfig,
     client: OpenAI | None = None,
     config: AppConfig | None = None,
+    allow_sanitize_retry: bool = True,
 ) -> GeneratedImage:
     """Generate a dream illustration via DALL-E 3.
 
     Constructs a prompt from the scene description + style suffix,
     calls DALL-E 3, and returns the result with the revised prompt.
 
+    On content policy rejection, if allow_sanitize_retry is True, asks
+    GPT-4 to sanitize the scene and retries once with the cleaned prompt.
+
     Args:
         scene_description: Expanded scene from the expander module.
         style: Style preset with suffix to append to the prompt.
         client: OpenAI client. If None, creates one from config.
         config: App config. If None, loads defaults.
+        allow_sanitize_retry: If True, attempt one sanitized retry on
+            content policy rejection.
 
     Returns:
         GeneratedImage with url, revised_prompt, and metadata.
@@ -90,6 +121,20 @@ def generate_illustration(
 
         if error_code == "content_policy_violation":
             logger.warning("Content policy rejection: %s", error_message)
+
+            if allow_sanitize_retry:
+                logger.info("Attempting sanitized retry...")
+                try:
+                    sanitized = sanitize_scene(scene_description, client, config)
+                    return generate_illustration(
+                        sanitized, style,
+                        client=client,
+                        config=config,
+                        allow_sanitize_retry=False,
+                    )
+                except Exception as retry_err:
+                    logger.warning("Sanitized retry also failed: %s", retry_err)
+
             return GeneratedImage(
                 url="",
                 rejected=True,

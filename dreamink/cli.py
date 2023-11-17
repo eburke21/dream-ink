@@ -92,6 +92,12 @@ def add(entry_date: str | None, style_name: str | None, skip_image: bool):
         _error("No dream notes provided.")
         sys.exit(1)
 
+    word_count = len(raw_notes.split())
+    if word_count > 500:
+        _warn(f"Long input ({word_count} words) — will be truncated to 500 words.")
+    elif word_count < 10:
+        _warn(f"Short input ({word_count} words) — expansion will use lower temperature for accuracy.")
+
     click.echo(f"\nDate: {entry_date}")
     click.echo(f"Notes: {raw_notes[:80]}{'...' if len(raw_notes) > 80 else ''}")
     click.echo()
@@ -738,3 +744,33 @@ def _build_monthly_indexes(db, config):
     root_index_lines.append("")
     root_path = Path(config.output_path) / "index.md"
     root_path.write_text("\n".join(root_index_lines))
+
+
+@cli.command("export")
+def export_cmd():
+    """Export journal as a self-contained HTML file.
+
+    Generates a single HTML file with all journal entries and
+    base64-encoded thumbnail images. The file can be opened in any
+    browser and shared without external dependencies.
+
+    Examples:
+
+        dreamink export
+    """
+    from dreamink.exporter import export_html
+    from dreamink.storage import load_database
+
+    config = get_config()
+    styles = get_styles()
+    db = load_database(config.database_path)
+
+    if not db.entries:
+        _warn("No entries in the database.")
+        return
+
+    style_labels = {name: s.label for name, s in styles.items()}
+    output_path = f"{config.output_path}/dream_journal.html"
+
+    result_path = export_html(db, output_path, style_labels)
+    _success(f"Exported {len(db.entries)} entries to {result_path}")

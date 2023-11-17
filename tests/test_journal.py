@@ -186,3 +186,32 @@ class TestRebuildJournal:
 
         content = (tmp_path / "dream_journal.md").read_text()
         assert content == "# Dream Journal\n\n"
+
+    def test_detects_missing_images(self, tmp_path, full_entry):
+        db = JournalDatabase(entries=[full_entry])
+        journal_path = str(tmp_path / "dream_journal.md")
+        missing = rebuild_journal(db, journal_path)
+
+        # The image path in full_entry doesn't exist on disk
+        assert len(missing) == 1
+        assert "2023-11-15_watercolor.png" in missing[0]
+
+    def test_no_missing_images_when_files_exist(self, tmp_path):
+        img_path = tmp_path / "image.png"
+        img_path.write_text("fake png")
+
+        entry = DreamEntry(
+            id="test", date="2023-11-15",
+            raw_notes="a dream",
+            illustrations=[
+                Illustration(
+                    style="watercolor",
+                    image_path=str(img_path),
+                    cost_usd=0.08,
+                )
+            ],
+        )
+        db = JournalDatabase(entries=[entry])
+        journal_path = str(tmp_path / "dream_journal.md")
+        missing = rebuild_journal(db, journal_path)
+        assert missing == []

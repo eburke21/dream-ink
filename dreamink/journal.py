@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
 from dreamink.config import get_styles
 from dreamink.models import DreamEntry, JournalDatabase
+
+logger = logging.getLogger(__name__)
 
 _JOURNAL_HEADER = "# Dream Journal\n\n"
 
@@ -88,18 +91,30 @@ def append_to_journal(entry: DreamEntry, journal_path: str) -> None:
         f.write(rendered)
 
 
-def rebuild_journal(db: JournalDatabase, journal_path: str) -> None:
+def rebuild_journal(db: JournalDatabase, journal_path: str) -> list[str]:
     """Regenerate the entire journal file from the database.
 
     Entries are sorted by date descending (newest first).
+    Detects missing image files and logs warnings.
+
+    Returns:
+        List of missing image paths (empty if all images exist).
     """
     path = Path(journal_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     sorted_entries = sorted(db.entries, key=lambda e: e.date, reverse=True)
 
+    missing_images = []
+    for entry in sorted_entries:
+        for illust in entry.illustrations:
+            if illust.image_path and not Path(illust.image_path).exists():
+                missing_images.append(illust.image_path)
+                logger.warning("Missing image file: %s", illust.image_path)
+
     parts = [_JOURNAL_HEADER]
     for entry in sorted_entries:
         parts.append(render_entry(entry))
 
     path.write_text("".join(parts))
+    return missing_images

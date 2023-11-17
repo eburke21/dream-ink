@@ -104,7 +104,7 @@ class TestGenerateIllustration:
         assert result.rejected is False
         assert result.generation_metadata["style_name"] == "watercolor"
 
-    def test_content_policy_rejection(self, mock_config, watercolor_style):
+    def test_content_policy_rejection_without_retry(self, mock_config, watercolor_style):
         mock_client = MagicMock()
 
         error_body = {
@@ -121,12 +121,48 @@ class TestGenerateIllustration:
         mock_client.images.generate.side_effect = error
 
         result = generate_illustration(
-            "A violent scene.", watercolor_style, client=mock_client, config=mock_config
+            "A violent scene.", watercolor_style, client=mock_client, config=mock_config,
+            allow_sanitize_retry=False,
         )
 
         assert result.rejected is True
         assert "content policy" in result.rejection_reason.lower()
         assert result.url == ""
+
+    def test_content_policy_sanitize_retry_succeeds(self, mock_config, watercolor_style):
+        mock_client = MagicMock()
+
+        error_body = {
+            "error": {
+                "code": "content_policy_violation",
+                "message": "Rejected",
+            }
+        }
+        error = openai.BadRequestError(
+            message="Bad request",
+            response=MagicMock(status_code=400, headers={}),
+            body=error_body,
+        )
+
+        # First images.generate call fails, sanitize call succeeds, second images.generate succeeds
+        mock_client.images.generate.side_effect = [
+            error,
+            _make_image_response(url="https://example.com/sanitized.png"),
+        ]
+        # Chat call for sanitization
+        sanitize_resp = MagicMock()
+        sanitize_resp.choices = [MagicMock()]
+        sanitize_resp.choices[0].message.content = "A gentle scene."
+        sanitize_resp.usage = MagicMock(prompt_tokens=50, completion_tokens=20)
+        mock_client.chat.completions.create.return_value = sanitize_resp
+
+        result = generate_illustration(
+            "A violent scene.", watercolor_style, client=mock_client, config=mock_config,
+            allow_sanitize_retry=True,
+        )
+
+        assert result.rejected is False
+        assert result.url == "https://example.com/sanitized.png"
 
     def test_non_content_policy_error_raises(self, mock_config, watercolor_style):
         mock_client = MagicMock()

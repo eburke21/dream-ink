@@ -1,16 +1,16 @@
 [styles.surrealist]
 label = "Surrealist Painting"
-suffix = "in the style of a surrealist painting, dreamlike atmosphere, muted earth tones with one vivid accent color, soft impossible geometry, inspired by Remedios Varo and Kay Sage"
+suffix = "in the style of a surrealist painting, dreamlike atmosphere, muted earth tones with one vivid accent color, soft impossible geometry, the most striking surreal element should dominate the composition, inspired by Remedios Varo and Kay Sage"
 best_for = "architecturally complex dreams, impossible spaces"
 
 [styles.watercolor]
 label = "Watercolor Journal"
-suffix = "loose watercolor illustration with visible brushstrokes, bleeding edges where colors meet, dream journal aesthetic, muted palette with translucent layering, white paper showing through"
+suffix = "loose watercolor illustration with visible brushstrokes, bleeding edges where colors meet, dream journal aesthetic, muted palette with translucent layering, white paper showing through, emotional atmosphere conveyed through color temperature"
 best_for = "emotionally gentle dreams, nature imagery, default style"
 
 [styles.film_still]
 label = "Film Still"
-suffix = "cinematic film still, shallow depth of field, 35mm film grain, liminal space photography, slightly desaturated with warm shadows, directed by Wong Kar-wai"
+suffix = "cinematic film still, shallow depth of field, 35mm film grain, liminal space photography, slightly desaturated with warm shadows, mood conveyed through lighting and color grading, directed by Wong Kar-wai"
 best_for = "urban dreams, people, nighttime scenes"
 
 [styles.manga]
