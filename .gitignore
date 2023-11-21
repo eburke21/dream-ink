@@ -16,7 +16,6 @@ build/
 .idea/
 
 # Journal output (images are large, generated on demand)
-journal/**/images/
 journal/**/thumbs/
 data/dreamink.json
 

@@ -2,23 +2,21 @@
 
 A Python pipeline that transforms raw, fragmented morning dream notes into rich visual illustrations, building a visual dream journal over time. GPT-4 expands fragmentary notes into detailed visual scene descriptions, then DALL-E 3 generates illustrations in a chosen artistic style. Entries accumulate into a browsable Markdown journal with original notes, expanded scenes, thematic tags, and generated artwork.
 
-**Built:** November–December 2023, the week DALL-E 3 launched through the OpenAI API. 🚀
-
 ## 🏗️ Architecture
 
 ```mermaid
 flowchart TD
-    A["📱 Raw Dream Notes\n(2-4 sentences)"] --> B["🧠 Stage 1: Scene Expansion\nGPT-4"]
-    B --> C["📝 Expanded Scene Description\n(3-4 sentences, visual detail)"]
+    A["📱 Raw Dream Notes<br/>(2-4 sentences)"] --> B["🧠 Stage 1: Scene Expansion<br/>GPT-4"]
+    B --> C["📝 Expanded Scene Description<br/>(3-4 sentences, visual detail)"]
     C --> D{"🎨 Style Selection"}
-    D -->|Surrealist| E["🖼️ Stage 2: Image Generation\nDALL-E 3"]
+    D -->|Surrealist| E["🖼️ Stage 2: Image Generation <br/> DALL-E 3"]
     D -->|Watercolor| E
     D -->|Film Still| E
     D -->|Manga| E
     D -->|Collage| E
-    E --> F["⚙️ Post-Processing\n(Pillow)"]
+    E --> F["⚙️ Post-Processing <br/> (Pillow)"]
     F --> G["📋 Journal Entry Assembly"]
-    G --> H["📓 Markdown Journal\n+ Image Archive"]
+    G --> H["📓 Markdown Journal <br/> + Image Archive"]
 ```
 
 **💡 The core insight:** raw dream notes produce generic "dreamy" images when fed directly to DALL-E 3. The GPT-4 expansion step — with an explicit instruction to *preserve surreal logic* rather than rationalize it — is the difference between "a dreamy underwater scene" and "a specific childhood kitchen with fish in the cabinets and a stained-glass mother refracting waterlight across linoleum."
