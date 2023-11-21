@@ -1,6 +1,8 @@
-# 🌙 DreamInk
+# 🌙💤 DreamInk
 
-A Python pipeline that transforms raw, fragmented morning dream notes into rich visual illustrations, building a visual dream journal over time. GPT-4 expands fragmentary notes into detailed visual scene descriptions, then DALL-E 3 generates illustrations in a chosen artistic style. Entries accumulate into a browsable Markdown journal with original notes, expanded scenes, thematic tags, and generated artwork.
+Transforms raw, fragmented morning dream notes into rich visual illustrations, building a visual dream journal over time. GPT-4 expands fragmentary notes into detailed visual scene descriptions, then DALL-E 3 generates illustrations in a chosen artistic style. Entries accumulate into a browsable Markdown journal with original notes, expanded scenes, thematic tags, and generated artwork.
+
+Example output in `journal/`
 
 ## 🏗️ Architecture
 
@@ -21,7 +23,7 @@ flowchart TD
 
 **💡 The core insight:** raw dream notes produce generic "dreamy" images when fed directly to DALL-E 3. The GPT-4 expansion step — with an explicit instruction to *preserve surreal logic* rather than rationalize it — is the difference between "a dreamy underwater scene" and "a specific childhood kitchen with fish in the cabinets and a stained-glass mother refracting waterlight across linoleum."
 
-## ⚡ Quick Start
+## 📦 Quick Start
 
 ```bash
 # Install
@@ -38,7 +40,7 @@ dreamink add --date 2023-11-15
 echo "flying over a city made of books, pages fluttering as wings" | dreamink add
 ```
 
-## 📖 Usage
+## 🚀 Usage
 
 ### ✏️ Add a dream entry
 ```bash
@@ -124,7 +126,7 @@ Watercolor is the default because its inherent imprecision — bleeding edges, s
 
 Python 3.11+ · OpenAI GPT-4 + DALL-E 3 · Pydantic v2 · Click · Pillow · httpx · TOML config · pytest
 
-## 📁 Project Structure
+## 🗂️ Project Structure
 
 ```
 dreamink/
@@ -141,7 +143,7 @@ dreamink/
 └── utils.py            # 🔧  Retry logic, cost tracking
 ```
 
-## ✅ Testing
+## 🧪 Testing
 
 ```bash
 poetry run pytest tests/ -v    # 119 tests, all mocked (no API key needed)
