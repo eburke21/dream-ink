@@ -6,8 +6,11 @@ import sys
 from datetime import date, datetime, timezone
 
 import click
+from dotenv import load_dotenv
 
 from dreamink.config import get_config, get_styles
+
+load_dotenv()
 from dreamink.utils import calculate_llm_cost
 
 
