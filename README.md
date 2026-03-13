@@ -149,4 +149,4 @@ dreamink/
 poetry run pytest tests/ -v    # 119 tests, all mocked (no API key needed)
 ```
 
-Tests cover: models, config, storage, expansion, illustration, tag extraction, journal rendering, HTML export, and full pipeline orchestration. All API-calling tests use `MagicMock` — no real API calls in the test suite. 🧪
+Tests cover: models, config, storage, expansion, illustration, tag extraction, journal rendering, HTML export, and full pipeline orchestration. All API-calling tests use `MagicMock` — no real API calls in the test suite. 
