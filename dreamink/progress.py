@@ -6,6 +6,13 @@ from contextlib import contextmanager
 from typing import Generator
 
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+)
 from rich.status import Status
 from rich.theme import Theme
 
@@ -44,3 +51,71 @@ def dreamink_spinner(
         refresh_per_second=REFRESH_PER_SECOND,
     ) as status:
         yield status
+
+
+BAR_WIDTH = 30
+
+
+class DreamInkProgress:
+    """Combined progress bar + spinner for batch operations.
+
+    Usage:
+        with DreamInkProgress(total=5, label="styles") as progress:
+            for item in items:
+                progress.update_step(f"Generating {item}...")
+                do_work()
+                progress.log(f"[green]✓[/green] Saved: {path}")
+                progress.advance()
+    """
+
+    def __init__(
+        self,
+        total: int,
+        label: str = "items",
+        *,
+        console: Console | None = None,
+    ) -> None:
+        self._console = console or _console
+        self._total = total
+        self._label = label
+        self._progress: Progress | None = None
+        self._task_id: int | None = None
+
+    def __enter__(self) -> DreamInkProgress:
+        self._progress = Progress(
+            BarColumn(bar_width=BAR_WIDTH),
+            "[progress.percentage]{task.percentage:>3.0f}%",
+            MofNCompleteColumn(),
+            TextColumn("{task.fields[label]}"),
+            SpinnerColumn(SPINNER_TYPE, style=SPINNER_STYLE),
+            TextColumn("{task.fields[step]}"),
+            console=self._console,
+            refresh_per_second=REFRESH_PER_SECOND,
+        )
+        self._progress.start()
+        self._task_id = self._progress.add_task(
+            "",
+            total=self._total,
+            label=self._label,
+            step="",
+        )
+        return self
+
+    def __exit__(self, *args) -> None:
+        if self._progress:
+            self._progress.stop()
+
+    def update_step(self, step: str) -> None:
+        """Update the spinner text (e.g., 'Generating Watercolor...')."""
+        if self._progress and self._task_id is not None:
+            self._progress.update(self._task_id, step=step)
+
+    def advance(self) -> None:
+        """Advance the progress bar by one unit."""
+        if self._progress and self._task_id is not None:
+            self._progress.advance(self._task_id)
+
+    def log(self, message: str) -> None:
+        """Print a message above the live progress display."""
+        if self._progress:
+            self._progress.console.print(message)
