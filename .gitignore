@@ -15,6 +15,7 @@ build/
 .vscode/
 .idea/
 journal/
+docs/
 
 # Journal output (images are large, generated on demand)
 journal/**/thumbs/

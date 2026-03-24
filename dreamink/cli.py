@@ -9,6 +9,7 @@ import click
 from dotenv import load_dotenv
 
 from dreamink.config import get_config, get_styles
+from dreamink.progress import DreamInkProgress
 
 load_dotenv()
 from dreamink.utils import calculate_llm_cost
@@ -414,41 +415,45 @@ def compare(entry_date: str, style_list: str | None):
             _success(f"Entry {entry.id} already has all requested styles.")
             return
 
-        click.echo(f"Comparing {len(to_generate)} styles for entry {entry.id}:")
+        click.echo(f"Comparing {len(to_generate)} styles for entry {entry.id}:\n")
         total_cost = 0.0
 
-        for style_name in to_generate:
-            style = all_styles[style_name]
-            click.echo(_styled(f"  Generating {style.label}...", "cyan"))
+        with DreamInkProgress(total=len(to_generate), label="styles") as progress:
+            for style_name in to_generate:
+                style = all_styles[style_name]
+                progress.update_step(f"Generating {style.label}...")
 
-            result = generate_illustration(
-                entry.scene_description, style, client=client, config=config
-            )
-
-            if result.rejected:
-                _warn(f"  Content policy rejection for {style.label}: {result.rejection_reason}")
-                continue
-
-            processed = download_and_save(
-                image_url=result.url,
-                entry_date=entry.date,
-                style=style_name,
-                output_root=config.output_path,
-                raw_notes=entry.raw_notes,
-            )
-
-            entry.illustrations.append(
-                Illustration(
-                    style=style_name,
-                    image_path=processed.image_path,
-                    thumb_path=processed.thumb_path,
-                    revised_prompt=result.revised_prompt,
-                    generated_at=datetime.now(timezone.utc).isoformat(),
-                    cost_usd=config.cost_per_image_usd,
+                result = generate_illustration(
+                    entry.scene_description, style, client=client, config=config
                 )
-            )
-            total_cost += config.cost_per_image_usd
-            _success(f"  Saved: {processed.image_path}")
+
+                if result.rejected:
+                    progress.log(f"[yellow]⚠ Content policy rejection for {style.label}: {result.rejection_reason}[/yellow]")
+                    progress.advance()
+                    continue
+
+                progress.update_step(f"Downloading {style.label}...")
+                processed = download_and_save(
+                    image_url=result.url,
+                    entry_date=entry.date,
+                    style=style_name,
+                    output_root=config.output_path,
+                    raw_notes=entry.raw_notes,
+                )
+
+                entry.illustrations.append(
+                    Illustration(
+                        style=style_name,
+                        image_path=processed.image_path,
+                        thumb_path=processed.thumb_path,
+                        revised_prompt=result.revised_prompt,
+                        generated_at=datetime.now(timezone.utc).isoformat(),
+                        cost_usd=config.cost_per_image_usd,
+                    )
+                )
+                total_cost += config.cost_per_image_usd
+                progress.log(f"[green]✓[/green] Saved: {processed.image_path}")
+                progress.advance()
 
         save_database(db, config.database_path)
 

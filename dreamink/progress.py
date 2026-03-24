@@ -101,7 +101,7 @@ class DreamInkProgress:
         )
         return self
 
-    def __exit__(self, *args) -> None:
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self._progress:
             self._progress.stop()
 

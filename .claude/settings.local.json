@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PYTHONPATH=/tmp/rich_check python3 -c \"from rich.console import Console; c = Console\\(\\); import inspect; sig = inspect.signature\\(c.status\\); print\\(list\\(sig.parameters.keys\\(\\)\\)\\)\")",
+      "Bash(PYTHONPATH=/tmp/rich_check python3 -c \"from rich.progress import Progress; print\\(hasattr\\(Progress, ''log''\\)\\); print\\([m for m in dir\\(Progress\\) if not m.startswith\\(''_''\\)]\\)\")"
+    ]
+  }
+}
